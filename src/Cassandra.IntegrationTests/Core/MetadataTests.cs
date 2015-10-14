@@ -899,5 +899,43 @@ namespace Cassandra.IntegrationTests.Core
                 Assert.Null(cluster.Metadata.GetMaterializedView("ks_view_meta2", "monthlyhigh"));
             }
         }
+        /// Tests that clustering order metadata is set properly
+        /// 
+        /// ColumnClusteringOrderReversedTest tests that clustering order metadata for a column is properly recalled in the driver
+        /// metadata under the "clustering_order" column. It first creates a simple table with a primary key, one column ascending, another
+        /// column descending, and the final column without any order. It checks the metadata for each column to make sure that the proper
+        /// value is recalled in the driver metadata.
+        /// 
+        /// @since 3.0.0
+        /// @jira_ticket CSHARP-359
+        /// @expected_result Clustering order metadata is properly set
+        /// 
+        /// @test_category metadata
+        [Test, TestCassandraVersion(3, 0)]
+        public void ColumnClusteringOrderReversedTest()
+        {
+            string keyspaceName = TestUtils.GetUniqueKeyspaceName();
+            string tableName = "products";
+            ITestCluster testCluster = TestClusterManager.GetNonShareableTestCluster(DefaultNodeCount);
+            var cluster = testCluster.Cluster;
+            var session = testCluster.Session;
+            session.CreateKeyspace(keyspaceName);
+            session.ChangeKeyspace(keyspaceName);
+
+            var cql = "CREATE TABLE " + tableName + " (" +
+                      @"id int,
+                      description text,
+                      price double,
+                      tags frozen<set<text>>,
+                      PRIMARY KEY(id, description, price)
+                      ) WITH COMPACT STORAGE
+                      AND CLUSTERING ORDER BY (description ASC, price DESC)";
+            session.Execute(cql);
+
+            var tableMeta = cluster.Metadata.GetKeyspace(keyspaceName).GetTableMetadata(tableName);
+            Assert.IsFalse(tableMeta.ColumnsByName["description"].IsReversed);
+            Assert.IsTrue(tableMeta.ColumnsByName["price"].IsReversed);
+            Assert.Null(tableMeta.ColumnsByName["tags"].IsReversed);
+        }
     }
 }
